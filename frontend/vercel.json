@@ -1,0 +1,14 @@
+{
+  "crons": [
+    {
+      "path": "/api/weather_api.py",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "backend/$1"
+    }
+  ]
+}
