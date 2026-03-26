@@ -3,48 +3,52 @@ import requests
 from datetime import datetime
 from supabase import create_client
 
-def update_weather_data():
-    # 1. Credenciais via Variáveis de Ambiente (Configuradas no Painel da Vercel)
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    API_KEY = os.getenv("OPENWEATHER_API_KEY")
+# ✅ Puxando das variáveis de ambiente do painel da Vercel
+URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+OPENWEATHER_KEY = os.getenv("OPENWEATHER_API_KEY") # Certifique-se de adicionar esta no Vercel Settings
 
-    # Verificação de segurança: evita que o código rode se as chaves não estiverem no sistema
-    if not all([SUPABASE_URL, SUPABASE_KEY, API_KEY]):
-        return "❌ Erro: Variáveis de ambiente faltando (verifique o painel da Vercel)."
+supabase = create_client(URL, KEY)
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+def handler(request):
+    # São Paulo, SP
+    lat, lon = "-23.5505", "-46.6333"
     
-    # Configuração da consulta (São Paulo)
-    CITY = "Sao Paulo,BR"
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units=metric&lang=pt_br"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OPENWEATHER_KEY}&units=metric&lang=pt_br"
 
     try:
-        response = requests.get(url, timeout=15)
-        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌤️ Consultando Previsão do Tempo...")
+        response = requests.get(url)
+        data = response.json()
+
         if response.status_code == 200:
-            data = response.json()
+            temp = data["main"]["temp"]
+            descricao = data["weather"][0]["description"].upper()
+            humidade = data["main"]["humidity"]
+
             payload = {
-                "id": 1, # Mantemos o ID 1 para que o Upsert sempre atualize a mesma linha
-                "city": "São Paulo",
-                "temp": round(data['main']['temp']),
-                "condition": data['weather'][0]['description'].capitalize(),
-                "icon_code": data['weather'][0]['icon'],
-                "humidity": data['main']['humidity'],
-                "updated_at": datetime.now().isoformat()
+                "id": 1, # Usamos um ID fixo para apenas atualizar a mesma linha sempre
+                "temp": f"{int(temp)}°C",
+                "description": descricao,
+                "humidity": f"{humidade}%",
+                "city": "São Paulo"
             }
 
-            # Upsert no Supabase: Se o ID 1 existir, ele atualiza; se não, cria.
-            supabase.table("weather_status").upsert(payload).execute()
+            # Upsert para manter sempre apenas um registro atualizado de clima
+            supabase.table('weather_status').upsert(payload, on_conflict="id").execute()
             
-            return f"✅ Sucesso! Clima em SP: {payload['temp']}°C - {payload['condition']}"
+            return {
+                "statusCode": 200,
+                "body": {"message": f"Clima atualizado: {temp}°C, {descricao}"}
+            }
         else:
-            return f"❌ Erro na API OpenWeather: {response.status_code} - {response.text}"
+            return {
+                "statusCode": 500,
+                "body": {"error": "Falha na API OpenWeather", "details": data}
+            }
 
     except Exception as e:
-        return f"❌ Erro crítico na execução: {str(e)}"
-
-# A Vercel executa este bloco ao rodar o script (via Cron Job ou acesso direto)
-if __name__ == "__main__":
-    result = update_weather_data()
-    print(result)
+        return {
+            "statusCode": 500,
+            "body": {"error": str(e)}
+        }

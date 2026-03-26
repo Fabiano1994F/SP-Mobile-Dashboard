@@ -1,14 +1,24 @@
 {
-  "crons": [
+  "builds": [
     {
-      "path": "/api/weather_api.py",
-      "schedule": "*/15 * * * *"
+      "src": "backend/*.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/next"
     }
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "backend/$1"
+      "source": "/api/:path*",
+      "destination": "/backend/:path*.py"
     }
-  ]
+  ],
+  "crons": [
+  {
+    "path": "/api/traffic_api",
+    "schedule": "*/15 * * * *"
+  }
+]
 }

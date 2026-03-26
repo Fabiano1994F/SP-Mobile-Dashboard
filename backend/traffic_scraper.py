@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from supabase import create_client
 
-# Configurações do Supabase
+# Configurações do Supabase 
 URL = "https://lxvmfpcrpnpowqwofyme.supabase.co"
 KEY = "sb_publishable_6ElMQOaW-Hf9-1HkLTN05g_SlHBT0Ro"
 supabase = create_client(URL, KEY)
