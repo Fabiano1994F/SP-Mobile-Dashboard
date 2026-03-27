@@ -1,16 +1,22 @@
 import os
 import requests
-from datetime import datetime
+from flask import Flask, jsonify
+from flask_cors import CORS
 from supabase import create_client
 
-# ✅ Puxando das variáveis de ambiente que configuramos na Vercel
+app = Flask(__name__)
+CORS(app)  # Permite que seu frontend acesse a API
+
+# Configurações do Supabase e TomTom
 URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 API_KEY_TOMTOM = os.getenv("NEXT_PUBLIC_TOMTOM_API_KEY")
 
+# Inicializa o cliente Supabase
 supabase = create_client(URL, KEY)
 
-def handler(request): # O Vercel chama essa função 'handler'
+@app.route('/update-traffic', methods=['GET'])
+def update_traffic():
     vias = {
         "Marginal Tietê": "-23.516,-46.623",
         "Marginal Pinheiros": "-23.589,-46.708",
@@ -23,17 +29,22 @@ def handler(request): # O Vercel chama essa função 'handler'
     }
 
     results = []
+    
+    if not API_KEY_TOMTOM:
+        return jsonify({"error": "Chave da TomTom não configurada"}), 500
+
     for nome, coords in vias.items():
         url = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key={API_KEY_TOMTOM}&point={coords}"
         
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             data = response.json()
             
             flow = data.get("flowSegmentData", {})
             current_speed = flow.get("currentSpeed", 0)
-            free_flow_speed = flow.get("freeFlowSpeed", 1)
+            free_flow_speed = flow.get("freeFlowSpeed", 1) # Evita divisão por zero
             
+            # Cálculo de tráfego
             ratio = current_speed / free_flow_speed
             
             if ratio > 0.8: status = "TRÁFEGO NORMAL"
@@ -44,17 +55,26 @@ def handler(request): # O Vercel chama essa função 'handler'
                 "road_name": nome, 
                 "status": status,
                 "direction": f"Velocidade: {current_speed} km/h"
-                # Removi o updated_at pois o Supabase pode gerar o default(now()) no banco
             }
 
-            # Faz o Upsert no banco
+            # Upsert no Supabase
             supabase.table('traffic_status').upsert(payload, on_conflict="road_name").execute()
             results.append({"via": nome, "status": "sucesso"})
 
         except Exception as e:
             results.append({"via": nome, "status": f"erro: {str(e)}"})
 
-    return {
-        "statusCode": 200,
-        "body": {"message": "Atualização concluída", "detalhes": results}
-    }
+    return jsonify({
+        "message": "Atualização concluída", 
+        "detalhes": results
+    }), 200
+
+# Rota padrão para teste
+@app.route('/')
+def health_check():
+    return "API SP Mobility está online!", 200
+
+if __name__ == "__main__":
+    # O Render exige que a porta seja dinâmica via variável de ambiente
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
